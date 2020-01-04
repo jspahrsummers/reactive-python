@@ -1,15 +1,14 @@
-import asyncio
 import unittest
-from typing import Any, Callable, Iterable, List, no_type_check_decorator
+from typing import Any, Iterable, List
 
-import aiounittest
 from hypothesis import given
 from hypothesis.strategies import from_type, iterables, lists
 
 import reactive
+import tests.helpers
 
 
-class TestConstructors(aiounittest.AsyncTestCase):
+class TestConstructors(tests.helpers.AsyncTestCase):
     async def test_empty(self) -> None:
         empty = reactive.empty()
 
@@ -45,15 +44,6 @@ class TestConstructors(aiounittest.AsyncTestCase):
         ait = reactive.just(*values)
         async for x in ait:
             self.assertEqual(x, values.pop(0))
-
-    # Hypothesis hook
-    def execute_example(self, fn: Callable[[], Any]) -> Any:
-        result = fn()
-
-        if asyncio.iscoroutine(result):
-            result = asyncio.run(result)
-
-        return result
 
 
 if __name__ == "__main__":
