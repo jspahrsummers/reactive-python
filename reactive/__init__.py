@@ -1,12 +1,12 @@
 from . import aitertools
 from . import agentools
 from . import operators
-from .stream import StreamGenerator, chain, connect
+from .stream import StreamGenerator, flatmap, connect
 
 __all__ = [
     "aitertools",
     "AwaitableIterable",
-    "chain",
+    "flatmap",
     "connect",
     "operators",
     "StreamGenerator",
