@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Generic,
     Iterable,
+    List,
     Optional,
     Type,
     TypeVar,
@@ -29,21 +30,24 @@ def chain(
         try:
             await gen2.__anext__()
             try:
-                v_values: Iterable[V] = []
+                result: Iterable[V] = []
 
                 while True:
-                    t = yield v_values
+                    t = yield result
 
                     u_values = await gen1.asend(t)
-                    v_values = itertools.chain.from_iterable(
-                        (await gen2.asend(u) for u in u_values)
-                    )
+                    v_values: List[V] = []
+                    for u in u_values:
+                        for v in await gen2.asend(u):
+                            v_values.append(v)
+
+                    result = v_values
             finally:
                 await gen2.aclose()
         finally:
             await gen1.aclose()
 
-    return StreamGenerator(chain(gen1, gen2))
+    return StreamGenerator(_chain(gen1, gen2))
 
 
 async def connect(
@@ -89,9 +93,9 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
     TOut2 = TypeVar("TOut2", covariant=True)
 
     def __or__(
-        self, other: AsyncGenerator[Iterable[TOut2], TOut]
+        self, other: "StreamGenerator[TOut2, TOut]"
     ) -> "StreamGenerator[TOut2, TIn]":
-        if not inspect.isasyncgen(other):
+        if not isinstance(other, StreamGenerator):
             return NotImplemented
 
         return chain(self, other)
