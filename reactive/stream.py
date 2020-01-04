@@ -79,7 +79,7 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
 
         return chain(self, other)
 
-    def __le__(self, upstream: AsyncIterable[TIn]) -> AwaitableIterable[TOut]:
+    def __le__(self, upstream: AsyncIterable[TIn]) -> "AwaitableIterable[TOut]":
         """
         Connects the stream generator to a data source (represented as an asynchronous iterable), so the generator will run over the values it receives.
 
