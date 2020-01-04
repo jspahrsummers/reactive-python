@@ -1,5 +1,6 @@
 from . import aitertools
-from . import operators as op
+from . import agentools
+from . import operators
 from .stream import StreamGenerator, chain, connect
 
 __all__ = [
@@ -7,6 +8,6 @@ __all__ = [
     "AwaitableIterable",
     "chain",
     "connect",
-    "op",
+    "operators",
     "StreamGenerator",
 ]

@@ -5,8 +5,8 @@ from hypothesis import given
 from hypothesis.strategies import integers, iterables, lists
 
 import reactive
+import reactive.operators as op
 import tests.helpers
-from reactive import op
 from reactive.aitertools import first, from_iterable
 
 
