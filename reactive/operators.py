@@ -37,6 +37,17 @@ async def chain(
         await gen1.aclose()
 
 
+async def connect(
+    gen: AsyncGenerator[TOut, TIn], upstream: AsyncIterable[TIn]
+) -> AsyncIterable[TOut]:
+    await gen.__anext__()
+    async for t in upstream:
+        u = await gen.asend(t)
+        yield u
+
+    await gen.aclose()
+
+
 class ComposableAsyncGenerator(AsyncGenerator[TOut, TIn], Generic[TOut, TIn]):
     """
     Wraps an AsyncGenerator to add some operator overloads to it.
@@ -45,6 +56,9 @@ class ComposableAsyncGenerator(AsyncGenerator[TOut, TIn], Generic[TOut, TIn]):
     def __init__(self, agen: AsyncGenerator[TOut, TIn]):
         self._agen = agen
         super().__init__()
+
+    def __aiter__(self) -> "ComposableAsyncGenerator[TOut, TIn]":
+        return self
 
     async def __anext__(self) -> TOut:
         return await self._agen.__anext__()
@@ -71,14 +85,23 @@ class ComposableAsyncGenerator(AsyncGenerator[TOut, TIn], Generic[TOut, TIn]):
 
         return chain(self, other)
 
+    def __le__(self, upstream: AsyncIterable[TIn]) -> AsyncIterable[TOut]:
+        if not hasattr(upstream, "__aiter__"):
+            return NotImplemented
 
-async def map(fn: Callable[[TIn], TOut]) -> AsyncGenerator[TOut, TIn]:
-    result: TOut = None  # type: ignore
-    # (yield is funky like that)
+        return connect(self, upstream)
 
-    while True:
-        x = yield result
-        result = fn(x)
+
+def map(fn: Callable[[TIn], TOut]) -> ComposableAsyncGenerator[TOut, TIn]:
+    async def _map(fn: Callable[[TIn], TOut]) -> AsyncGenerator[TOut, TIn]:
+        result: TOut = None  # type: ignore
+        # (yield is funky like that)
+
+        while True:
+            x = yield result
+            result = fn(x)
+
+    return ComposableAsyncGenerator(_map(fn))
 
 
 def filter(fn: Callable[[T], bool]) -> Callable[[AsyncIterable[T]], AsyncIterable[T]]:
@@ -88,14 +111,3 @@ def filter(fn: Callable[[T], bool]) -> Callable[[AsyncIterable[T]], AsyncIterabl
                 yield x
 
     return _filter
-
-
-async def connect(
-    gen: AsyncGenerator[TOut, TIn], upstream: AsyncIterable[TIn]
-) -> AsyncIterable[TOut]:
-    await gen.__anext__()
-    async for t in upstream:
-        u = await gen.asend(t)
-        yield u
-
-    await gen.aclose()
