@@ -7,10 +7,12 @@ from typing import (
     Iterable,
     NoReturn,
     TypeVar,
+    Union,
     cast,
 )
 
 T = TypeVar("T")
+U = TypeVar("U")
 
 
 async def from_iterable(it: Iterable[T]) -> AsyncIterable[T]:
@@ -45,7 +47,7 @@ def just(*args: T) -> AsyncIterable[T]:
     return from_iterable(args)
 
 
-async def first(ait: AsyncIterable[T], *default: T) -> T:
+async def first(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
     """
     Returns the first value yielded by the given iterable. If there are no values yielded, returns the default (if given) or throws an exception.
     """
