@@ -1,4 +1,6 @@
+import itertools
 import sys
+import traceback
 from types import TracebackType
 from typing import (
     Any,
@@ -6,6 +8,7 @@ from typing import (
     AsyncIterable,
     AsyncIterator,
     Awaitable,
+    Coroutine,
     Generator,
     Generic,
     Iterable,
@@ -22,6 +25,14 @@ TIn = TypeVar("TIn", contravariant=True)
 TOut = TypeVar("TOut", covariant=True)
 
 
+class GeneratorFinish(GeneratorExit):
+    """
+    Raised in asynchronous generators by some library functions, to give them an opportunity to flush final values before exiting (which is not permitted in response to GeneratorExit alone).
+    """
+
+    pass
+
+
 class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
     """
     Represents an asynchronous generator which yields a stream of values each time it is resumed (represented as an iterable).
@@ -31,6 +42,8 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
     1. By yielding an empty iterable, the generator is able to indicate that it has nothing to output for the value that was sent to it, and that it wishes to suspend execution until another value is available (useful, e.g., for filtering or accumulation).
 
     2. By yielding an iterable of more than one value, the generator can expand a single input into multiple outputs, or yield values that were previously accumulated. We prefer to represent this as an iterable (compared to a tuple or list) to support lazy generation, in case the downstream consumer will not actually consume all of the values.
+
+    As a coincidental (but nice) side effect, this also makes it easy to send an "empty value" for the first invocation of asend(), which is required by the AsyncGenerator contract but not captured correctly in `typing`: https://gist.github.com/jspahrsummers/32a8096667cf9f17d5e8fddeb081b202
     """
 
     def __init__(self, agen: AsyncGenerator[Iterable[TOut], TIn]):
@@ -39,7 +52,18 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
         """
 
         self._agen = agen
+
+        if __debug__:
+            self._stack_summary = traceback.extract_stack(limit=2)
+
         super().__init__()
+
+    def __str__(self) -> str:
+        if __debug__:
+            trace = "\n".join(traceback.format_list(self._stack_summary))
+            return f"StreamGenerator created at:\n{trace}"
+        else:
+            return super().__str__()
 
     def __aiter__(self) -> "StreamGenerator[TOut, TIn]":
         return self
@@ -97,6 +121,42 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
         return connect(self, upstream)
 
 
+async def afinish(
+    agen: AsyncGenerator[TOut, TIn], cause: Optional[BaseException] = None
+) -> Optional[TOut]:
+    """
+    Raises GeneratorFinish inside the generator, then returns whatever final value it yields.
+    
+    If there is no final value, raises GeneratorExit.
+    If the generator is already closed, returns None.
+    """
+
+    finish = GeneratorFinish()
+    finish.__cause__ = cause
+
+    result = await agen.athrow(type(finish), finish)
+
+    # Generator must exit after we raised GeneratorFinish.
+    await agen.aclose()
+
+    return result
+
+
+async def afinish_non_optional(
+    agen: AsyncGenerator[TOut, TIn], cause: Optional[BaseException] = None
+) -> TOut:
+    """
+    Raises GeneratorFinish inside the generator, then returns whatever final value it yields.
+    
+    If there is no final value, the final value is None, or the generator is already closed, raises GeneratorExit.
+    """
+    result = await afinish(agen, cause)
+    if result is None:
+        raise GeneratorExit from cause
+
+    return result
+
+
 # TODO: Rename to flatmap?
 def chain(
     gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
@@ -108,49 +168,74 @@ def chain(
     """
 
     async def _chain(
-        gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
+        u_gen: AsyncGenerator[Iterable[U], T], v_gen: AsyncGenerator[Iterable[V], U]
     ) -> AsyncGenerator[Iterable[V], T]:
-        try:
-            # TODO: Catch StopIteration/StopAsyncIteration?
-            await gen1.__anext__()
-            await gen2.__anext__()
+        async def u_run(coro: Awaitable[Iterable[U]]) -> Iterable[V]:
+            try:
+                u_values = await coro
+            except (StopAsyncIteration, GeneratorExit) as stop:
+                # If v_gen also throws StopAsyncIteration or GeneratorExit here, the exception will propagate and we will gracefully exit.
+                return await afinish_non_optional(v_gen, stop)
+            except BaseException as err:
+                # Delegate error handling to v_gen, so it may decide to suppress the error and turn it into values, or else re-raise to the consumer of the chain.
+                v_values = await v_gen.athrow(type(err), err, err.__traceback__)
 
-            result: Iterable[V] = []
-
-            async def _flatmap(u_values: Iterable[U]) -> List[V]:
+                try:
+                    # If we're still here, we need v_gen to finish.
+                    v_last_values = await afinish_non_optional(v_gen, err)
+                except (StopAsyncIteration, GeneratorExit):
+                    # A clean exit, with no final values.
+                    return v_values
+                else:
+                    return itertools.chain(v_values, v_last_values)
+            else:
+                # u_gen still alive.
                 v_values = []
-                for u in u_values:
-                    # TODO: Catch StopIteration/StopAsyncIteration?
-                    for v in await gen2.asend(u):
-                        v_values.append(v)
 
+                try:
+                    # FIXME: Undesirable batching. We should yield v_values incrementally.
+                    for u in u_values:
+                        v_values += await v_gen.asend(u)
+                except (StopAsyncIteration, GeneratorExit):
+                    # v_gen completed early, so close u_gen (with no opportunity for final values).
+                    await u_gen.aclose()
+
+                # Other exception types are propagated, as real errors.
                 return v_values
 
+        try:
+            # TODO: Defer this until we actually have work for the generators to do?
+            await u_gen.__anext__()
+            await v_gen.__anext__()
+
+            v_values: Iterable[V] = []
             while True:
                 try:
-                    t = yield result
+                    t = yield v_values
+                except GeneratorFinish as finish:
+                    # Consumer asked us to finish up. Propagate to u_gen.
+                    yield await u_run(afinish_non_optional(u_gen, finish))
+
+                    # If we're still here, give v_gen the opportunity too.
+                    yield await afinish_non_optional(v_gen, finish)
+
+                    # Jump to finalizing the generators.
+                    break
+                except GeneratorExit:
+                    # Not permitted to yield any values after receiving this, so just exit.
+                    break
                 except BaseException as err:
-                    exc = sys.exc_info()
+                    # Delegate error handling to u_gen.
+                    v_values = await u_run(
+                        u_gen.athrow(type(err), err, err.__traceback__)
+                    )
 
-                    # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
-                    uit = await gen1.athrow(*exc)
-                    if uit:
-                        yield await _flatmap(uit)
+                    continue
 
-                    # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
-                    vit = await gen2.athrow(*exc)
-                    if vit:
-                        yield vit
-
-                    raise
-                else:
-                    # TODO: Catch StopIteration/StopAsyncIteration?
-                    result = await _flatmap(await gen1.asend(t))
+                v_values = await u_run(u_gen.asend(t))
         finally:
-            # TODO: Catch StopIteration?
-            await gen1.aclose()
-            # TODO: Catch StopIteration?
-            await gen2.aclose()
+            await u_gen.aclose()
+            await v_gen.aclose()
 
     return StreamGenerator(_chain(gen1, gen2))
 
@@ -184,31 +269,19 @@ def connect(
     async def _connect(
         gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
     ) -> AsyncIterable[TOut]:
-        # TODO: Catch StopIteration/StopAsyncIteration?
         await gen.__anext__()
 
         try:
             async for t in upstream:
-                # TODO: Catch StopIteration/StopAsyncIteration?
                 for u in await gen.asend(t):
                     yield u
-        except BaseException:
-            # TODO: Catch StopIteration/StopAsyncIteration, or rethrown GeneratorExit?
-            it = await gen.athrow(*sys.exc_info())
-            if it:
-                for u in it:
-                    yield u
 
-            raise
-        else:
-            # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
-            # TODO: Use a custom exception type? Yielding values after GeneratorExit is disallowed according to the docs
-            it = await gen.athrow(GeneratorExit)
-            if it:
-                for u in it:
+            try:
+                for u in await afinish_non_optional(gen):
                     yield u
+            except GeneratorExit:
+                pass
         finally:
-            # TODO: Catch StopIteration?
             await gen.aclose()
 
     return AwaitableIterable(_connect(gen, upstream))
