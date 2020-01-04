@@ -33,6 +33,7 @@ def chain(
         gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
     ) -> AsyncGenerator[Iterable[V], T]:
         try:
+            # TODO: Catch StopIteration/StopAsyncIteration?
             await gen1.__anext__()
             await gen2.__anext__()
 
@@ -41,6 +42,7 @@ def chain(
             async def _flatmap(u_values: Iterable[U]) -> List[V]:
                 v_values = []
                 for u in u_values:
+                    # TODO: Catch StopIteration/StopAsyncIteration?
                     for v in await gen2.asend(u):
                         v_values.append(v)
 
@@ -52,19 +54,24 @@ def chain(
                 except BaseException as err:
                     exc = sys.exc_info()
 
+                    # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
                     uit = await gen1.athrow(*exc)
                     if uit:
                         yield await _flatmap(uit)
 
+                    # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
                     vit = await gen2.athrow(*exc)
                     if vit:
                         yield vit
 
                     raise
                 else:
+                    # TODO: Catch StopIteration/StopAsyncIteration?
                     result = await _flatmap(await gen1.asend(t))
         finally:
+            # TODO: Catch StopIteration?
             await gen1.aclose()
+            # TODO: Catch StopIteration?
             await gen2.aclose()
 
     return StreamGenerator(_chain(gen1, gen2))
@@ -88,13 +95,16 @@ def connect(
     async def _connect(
         gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
     ) -> AsyncIterable[TOut]:
+        # TODO: Catch StopIteration/StopAsyncIteration?
         await gen.__anext__()
 
         try:
             async for t in upstream:
+                # TODO: Catch StopIteration/StopAsyncIteration?
                 for u in await gen.asend(t):
                     yield u
         except BaseException:
+            # TODO: Catch StopIteration/StopAsyncIteration, or rethrown GeneratorExit?
             it = await gen.athrow(*sys.exc_info())
             if it:
                 for u in it:
@@ -102,11 +112,14 @@ def connect(
 
             raise
         else:
+            # TODO: Catch StopIteration/AsyncIteration, or rethrown GeneratorExit?
+            # TODO: Use a custom exception type? Yielding values after GeneratorExit is disallowed according to the docs
             it = await gen.athrow(GeneratorExit)
             if it:
                 for u in it:
                     yield u
         finally:
+            # TODO: Catch StopIteration?
             await gen.aclose()
 
     return AwaitableIterable(_connect(gen, upstream))
@@ -188,6 +201,7 @@ def collect() -> StreamGenerator[List[T], T]:
             while True:
                 x = yield []
                 values.append(x)
+        # TODO: Use a custom exception type? Yielding values after GeneratorExit is disallowed according to the docs
         except GeneratorExit:
             yield [values]
             raise
