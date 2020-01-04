@@ -1,12 +1,18 @@
 import inspect
 import itertools
+import sys
 from types import TracebackType
 from typing import (
+    Any,
     AsyncGenerator,
     AsyncIterable,
+    AsyncIterator,
+    Awaitable,
     Callable,
+    Generator,
     Generic,
     Iterable,
+    Iterator,
     List,
     Optional,
     Type,
@@ -26,39 +32,84 @@ def chain(
     async def _chain(
         gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
     ) -> AsyncGenerator[Iterable[V], T]:
-        await gen1.__anext__()
         try:
+            await gen1.__anext__()
             await gen2.__anext__()
-            try:
-                result: Iterable[V] = []
 
-                while True:
+            result: Iterable[V] = []
+
+            async def _flatmap(u_values: Iterable[U]) -> List[V]:
+                v_values = []
+                for u in u_values:
+                    for v in await gen2.asend(u):
+                        v_values.append(v)
+
+                return v_values
+
+            while True:
+                try:
                     t = yield result
+                except BaseException as err:
+                    exc = sys.exc_info()
 
-                    u_values = await gen1.asend(t)
-                    v_values: List[V] = []
-                    for u in u_values:
-                        for v in await gen2.asend(u):
-                            v_values.append(v)
+                    uit = await gen1.athrow(*exc)
+                    if uit:
+                        yield await _flatmap(uit)
 
-                    result = v_values
-            finally:
-                await gen2.aclose()
+                    vit = await gen2.athrow(*exc)
+                    if vit:
+                        yield vit
+
+                    raise
+                else:
+                    result = await _flatmap(await gen1.asend(t))
         finally:
             await gen1.aclose()
+            await gen2.aclose()
 
     return StreamGenerator(_chain(gen1, gen2))
 
 
-async def connect(
-    gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
-) -> AsyncIterable[TOut]:
-    await gen.__anext__()
-    async for t in upstream:
-        for u in await gen.asend(t):
-            yield u
+class AwaitableIterable(Awaitable[TOut], AsyncIterable[TOut], Generic[TOut]):
+    def __init__(self, it: AsyncIterable[TOut]):
+        self._it = it
+        super().__init__()
 
-    await gen.aclose()
+    def __aiter__(self) -> AsyncIterator[TOut]:
+        return self._it.__aiter__()
+
+    def __await__(self) -> Generator[Any, None, TOut]:
+        return self.__aiter__().__anext__().__await__()
+
+
+def connect(
+    gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
+) -> AwaitableIterable[TOut]:
+    async def _connect(
+        gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
+    ) -> AsyncIterable[TOut]:
+        await gen.__anext__()
+
+        try:
+            async for t in upstream:
+                for u in await gen.asend(t):
+                    yield u
+        except BaseException:
+            it = await gen.athrow(*sys.exc_info())
+            if it:
+                for u in it:
+                    yield u
+
+            raise
+        else:
+            it = await gen.athrow(GeneratorExit)
+            if it:
+                for u in it:
+                    yield u
+        finally:
+            await gen.aclose()
+
+    return AwaitableIterable(_connect(gen, upstream))
 
 
 class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
@@ -100,7 +151,7 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
 
         return chain(self, other)
 
-    def __le__(self, upstream: AsyncIterable[TIn]) -> AsyncIterable[TOut]:
+    def __le__(self, upstream: AsyncIterable[TIn]) -> AwaitableIterable[TOut]:
         if not hasattr(upstream, "__aiter__"):
             return NotImplemented
 
@@ -127,3 +178,18 @@ def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
             out_value = (x for x in [in_value] if fn(x))
 
     return StreamGenerator(_filter(fn))
+
+
+def collect() -> StreamGenerator[List[T], T]:
+    async def _collect() -> AsyncGenerator[Iterable[List[T]], T]:
+        values: List[T] = []
+
+        try:
+            while True:
+                x = yield []
+                values.append(x)
+        except GeneratorExit:
+            yield [values]
+            raise
+
+    return StreamGenerator(_collect())

@@ -41,6 +41,18 @@ class TestOperators(tests.helpers.AsyncTestCase):
             self.assertIsInstance(x, str)
             self.assertLess(int(x), 0)
 
+    @given(iterables(integers()))  # type: ignore
+    async def test_collect(self, items: Iterable[int]) -> None:
+        def is_negative(x: int) -> bool:
+            return x < 0
+
+        filtered = await (
+            reactive.from_iterable(items) >= op.filter(is_negative) | op.collect()
+        )
+
+        for x in filtered:
+            self.assertLess(x, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
