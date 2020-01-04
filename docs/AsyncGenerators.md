@@ -179,8 +179,9 @@ class AsyncGenerator(ABC, AsyncIterator[TYield], Generic[TYield, TSend]):
         was last suspended.
         
         If the generator has already exited (gracefully or through an
-        exception) or been closed previously, nothing happens, and the
-        awaitable returned by aclose() will return gracefully.
+        exception) or been closed previously, or the generator was never
+        started, nothing happens, and the awaitable returned by aclose() will
+        return gracefully.
         
         If the generator does not catch the GeneratorExit exception, or
         catches GeneratorExit then exits gracefully, the awaitable returned
