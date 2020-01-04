@@ -25,7 +25,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
     async def test_filter(self, items: Iterable[int]) -> None:
         # mypy needs help to infer filter() here :(
         fn: Callable[[int], bool] = lambda x: x < 0
-        ait = op.filter(fn)(reactive.from_iterable(items))
+        ait = op.filter(fn) <= reactive.from_iterable(items)
 
         async for x in ait:
             self.assertLess(x, 0)
