@@ -26,7 +26,11 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
     """
     Represents an asynchronous generator which yields a stream of values each time it is resumed (represented as an iterable).
 
-    The streams (iterables) are of indefinite length, so they may yield zero or any other number of values.
+    The streams (iterables) are of indefinite length, so they may yield zero or any other number of values. This offers additional flexibility over the base AsyncGenerator interface:
+
+    1. By yielding an empty iterable, the generator is able to indicate that it has nothing to output for the value that was sent to it, and that it wishes to suspend execution until another value is available (useful, e.g., for filtering or accumulation).
+
+    2. By yielding an iterable of more than one value, the generator can expand a single input into multiple outputs, or yield values that were previously accumulated. We prefer to represent this as an iterable (compared to a tuple or list) to support lazy generation, in case the downstream consumer will not actually consume all of the values.
     """
 
     def __init__(self, agen: AsyncGenerator[Iterable[TOut], TIn]):
@@ -93,6 +97,7 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
         return connect(self, upstream)
 
 
+# TODO: Rename to flatmap?
 def chain(
     gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
 ) -> "StreamGenerator[V, T]":
