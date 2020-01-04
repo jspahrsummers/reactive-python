@@ -29,7 +29,7 @@ jobs:
 
     - name: Type-check
       run: |
-        mypy --strict .
+        mypy .
 
     - name: Test
       run: |
