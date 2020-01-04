@@ -65,3 +65,21 @@ async def first(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
         # HACK! For whatever reason, `async for` doesn't properly clean up if it's terminated early, so we have to close the generator by hand to avoid exception spam.
         if inspect.isasyncgen(ait):
             await cast(AsyncGenerator[T, Any], ait).aclose()
+
+
+async def last(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
+    """
+    Returns the last (final) value yielded by the given iterable. If there are no values yielded, returns the default (if given) or throws an exception.
+    """
+    result: Union[T, U]
+    async for val in ait:
+        result = val
+    else:
+        if not len(default):
+            raise RuntimeError(
+                f"Async iterable {ait} is empty, cannot await last value"
+            )
+
+        result = default[0]
+
+    return result
