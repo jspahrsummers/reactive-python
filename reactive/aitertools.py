@@ -1,4 +1,14 @@
-from typing import AsyncIterable, AsyncIterator, Iterable, NoReturn, TypeVar
+import inspect
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Iterable,
+    NoReturn,
+    TypeVar,
+    cast,
+)
 
 T = TypeVar("T")
 
@@ -39,10 +49,17 @@ async def first(ait: AsyncIterable[T], *default: T) -> T:
     """
     Returns the first value yielded by the given iterable. If there are no values yielded, returns the default (if given) or throws an exception.
     """
-    async for val in ait:
-        return val
+    try:
+        async for val in ait:
+            return val
+        else:
+            if len(default):
+                return default[0]
 
-    if len(default):
-        return default[0]
-
-    raise RuntimeError(f"Async iterable {ait} is empty, cannot await first value")
+            raise RuntimeError(
+                f"Async iterable {ait} is empty, cannot await first value"
+            )
+    finally:
+        # HACK! For whatever reason, `async for` doesn't properly clean up if it's terminated early, so we have to close the generator by hand to avoid exception spam.
+        if inspect.isasyncgen(ait):
+            await cast(AsyncGenerator[T, Any], ait).aclose()
