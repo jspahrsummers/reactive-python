@@ -21,7 +21,7 @@ TOut = TypeVar("TOut", covariant=True)
 
 def chain(
     gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
-) -> "IterablesAsyncGenerator[V, T]":
+) -> "StreamGenerator[V, T]":
     async def _chain(
         gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
     ) -> AsyncGenerator[Iterable[V], T]:
@@ -43,7 +43,7 @@ def chain(
         finally:
             await gen1.aclose()
 
-    return IterablesAsyncGenerator(chain(gen1, gen2))
+    return StreamGenerator(chain(gen1, gen2))
 
 
 async def connect(
@@ -57,7 +57,7 @@ async def connect(
     await gen.aclose()
 
 
-class IterablesAsyncGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
+class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
     """
     An AsyncGenerator which yields an indefinite number of results per each input.
     """
@@ -66,7 +66,7 @@ class IterablesAsyncGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut,
         self._agen = agen
         super().__init__()
 
-    def __aiter__(self) -> "IterablesAsyncGenerator[TOut, TIn]":
+    def __aiter__(self) -> "StreamGenerator[TOut, TIn]":
         return self
 
     async def __anext__(self) -> Iterable[TOut]:
@@ -90,7 +90,7 @@ class IterablesAsyncGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut,
 
     def __or__(
         self, other: AsyncGenerator[Iterable[TOut2], TOut]
-    ) -> "IterablesAsyncGenerator[TOut2, TIn]":
+    ) -> "StreamGenerator[TOut2, TIn]":
         if not inspect.isasyncgen(other):
             return NotImplemented
 
@@ -103,7 +103,7 @@ class IterablesAsyncGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut,
         return connect(self, upstream)
 
 
-def map(fn: Callable[[TIn], TOut]) -> IterablesAsyncGenerator[TOut, TIn]:
+def map(fn: Callable[[TIn], TOut]) -> StreamGenerator[TOut, TIn]:
     async def _map(fn: Callable[[TIn], TOut]) -> AsyncGenerator[Iterable[TOut], TIn]:
         out_value: Iterable[TOut] = []
 
@@ -111,10 +111,10 @@ def map(fn: Callable[[TIn], TOut]) -> IterablesAsyncGenerator[TOut, TIn]:
             in_value = yield out_value
             out_value = (fn(x) for x in [in_value])
 
-    return IterablesAsyncGenerator(_map(fn))
+    return StreamGenerator(_map(fn))
 
 
-def filter(fn: Callable[[T], bool]) -> IterablesAsyncGenerator[T, T]:
+def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
     async def _filter(fn: Callable[[T], bool]) -> AsyncGenerator[Iterable[T], T]:
         out_value: Iterable[T] = []
 
@@ -122,4 +122,4 @@ def filter(fn: Callable[[T], bool]) -> IterablesAsyncGenerator[T, T]:
             in_value = yield out_value
             out_value = (x for x in [in_value] if fn(x))
 
-    return IterablesAsyncGenerator(_filter(fn))
+    return StreamGenerator(_filter(fn))
