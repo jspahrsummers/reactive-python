@@ -14,7 +14,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
     async def test_map(self, items: List[int]) -> None:
         # mypy needs help to infer map() here :(
         fn: Callable[[int], int] = lambda x: x * 2
-        ait = op.map(fn)(reactive.from_iterable(items))
+        ait = op.connect(op.map(fn), reactive.from_iterable(items))
 
         i = 0
         async for x in ait:

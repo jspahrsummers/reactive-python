@@ -1,15 +1,16 @@
-from typing import AsyncIterable, Callable, TypeVar
+from typing import AsyncGenerator, AsyncIterable, Callable, TypeVar
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 
-def map(fn: Callable[[T], U]) -> Callable[[AsyncIterable[T]], AsyncIterable[U]]:
-    async def _map(it: AsyncIterable[T]) -> AsyncIterable[U]:
-        async for x in it:
-            yield fn(x)
+async def map(fn: Callable[[T], U]) -> AsyncGenerator[U, T]:
+    result: U = None  # type: ignore
+    # (yield is funky like that)
 
-    return _map
+    while True:
+        x = yield result
+        result = fn(x)
 
 
 def filter(fn: Callable[[T], bool]) -> Callable[[AsyncIterable[T]], AsyncIterable[T]]:
@@ -19,3 +20,14 @@ def filter(fn: Callable[[T], bool]) -> Callable[[AsyncIterable[T]], AsyncIterabl
                 yield x
 
     return _filter
+
+
+async def connect(
+    gen: AsyncGenerator[U, T], upstream: AsyncIterable[T]
+) -> AsyncIterable[U]:
+    await gen.__anext__()
+    async for t in upstream:
+        u = await gen.asend(t)
+        yield u
+
+    await gen.aclose()
