@@ -49,7 +49,7 @@ def just(*args: T) -> AsyncIterable[T]:
 
 async def first(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
     """
-    Returns the first value yielded by the given iterable. If there are no values yielded, returns the default (if given) or throws an exception.
+    Returns the first value yielded by the given iterable, then stops iterating. If there are no values yielded, returns the default (if given) or throws an exception.
     """
     try:
         async for val in ait:
