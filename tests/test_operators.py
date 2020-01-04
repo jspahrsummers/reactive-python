@@ -47,9 +47,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
         def is_negative(x: int) -> bool:
             return x < 0
 
-        filtered = await (
-            from_iterable(items) >= op.filter(is_negative) | op.collect()
-        )
+        filtered = await (from_iterable(items) >= op.filter(is_negative) | op.collect())
 
         for x in filtered:
             self.assertLess(x, 0)
