@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterable, List, no_type_check_decorator
 
 import aiounittest
 from hypothesis import given
-from hypothesis.strategies import from_type, iterables
+from hypothesis.strategies import from_type, iterables, lists
 
 import reactive
 
@@ -37,6 +37,12 @@ class TestConstructors(aiounittest.AsyncTestCase):
             return x
 
         ait = reactive.from_iterable((_save(x) for x in it))
+        async for x in ait:
+            self.assertEqual(x, values.pop(0))
+
+    @given(lists(from_type(type)))  # type: ignore
+    async def test_just(self, values: List[Any]) -> None:
+        ait = reactive.just(*values)
         async for x in ait:
             self.assertEqual(x, values.pop(0))
 
