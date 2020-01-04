@@ -33,3 +33,16 @@ def just(*args: T) -> AsyncIterable[T]:
     """
 
     return from_iterable(args)
+
+
+async def first(ait: AsyncIterable[T]) -> T:
+    """
+    Returns the first value yielded by the given iterator.
+    """
+
+    aiter = ait.__aiter__()
+    try:
+        return await aiter.__anext__()
+    finally:
+        if hasattr(aiter, "aclose"):
+            aiter.aclose()  # type: ignore

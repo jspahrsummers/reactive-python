@@ -103,7 +103,7 @@ class StreamGenerator(AsyncGenerator[Iterable[TOut], TIn], Generic[TOut, TIn]):
 
         return chain(self, other)
 
-    def __le__(self, upstream: AsyncIterable[TIn]) -> "AwaitableIterable[TOut]":
+    def __le__(self, upstream: AsyncIterable[TIn]) -> AsyncIterable[TOut]:
         """
         Connects the stream generator to a data source (represented as an asynchronous iterable), so the generator will run over the values it receives.
 
@@ -160,7 +160,7 @@ async def afinish_non_optional(
 # TODO: Rename to flatmap?
 def chain(
     gen1: AsyncGenerator[Iterable[U], T], gen2: AsyncGenerator[Iterable[V], U]
-) -> "StreamGenerator[V, T]":
+) -> StreamGenerator[V, T]:
     """
     Chains together two generators of iterables.
     
@@ -240,48 +240,25 @@ def chain(
     return StreamGenerator(_chain(gen1, gen2))
 
 
-# TODO: Split this into something like first(), last(), completed()
-class AwaitableIterable(Awaitable[TOut], AsyncIterable[TOut], Generic[TOut]):
-    """
-    Wraps a regular asynchronous iterable with support for `await` syntax.
-    """
-
-    def __init__(self, it: AsyncIterable[TOut]):
-        self._it = it
-        super().__init__()
-
-    def __aiter__(self) -> AsyncIterator[TOut]:
-        return self._it.__aiter__()
-
-    def __await__(self) -> Generator[Any, None, TOut]:
-        return self.__aiter__().__anext__().__await__()
-
-
-def connect(
+async def connect(
     gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
-) -> AwaitableIterable[TOut]:
+) -> AsyncIterable[TOut]:
     """
     Connects a generator of iterables to a data source (represented as an asynchronous iterable), so the generator will run over each of the input values.
 
     Returns each value of each iterable yielded by the generator, in order.
     """
+    await gen.__anext__()
 
-    async def _connect(
-        gen: AsyncGenerator[Iterable[TOut], TIn], upstream: AsyncIterable[TIn]
-    ) -> AsyncIterable[TOut]:
-        await gen.__anext__()
+    try:
+        async for t in upstream:
+            for u in await gen.asend(t):
+                yield u
 
         try:
-            async for t in upstream:
-                for u in await gen.asend(t):
-                    yield u
-
-            try:
-                for u in await afinish_non_optional(gen):
-                    yield u
-            except GeneratorExit:
-                pass
-        finally:
-            await gen.aclose()
-
-    return AwaitableIterable(_connect(gen, upstream))
+            for u in await afinish_non_optional(gen):
+                yield u
+        except GeneratorExit:
+            pass
+    finally:
+        await gen.aclose()

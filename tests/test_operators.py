@@ -7,7 +7,7 @@ from hypothesis.strategies import integers, iterables, lists
 import reactive
 import tests.helpers
 from reactive import op
-from reactive.aitertools import from_iterable
+from reactive.aitertools import first, from_iterable
 
 
 class TestOperators(tests.helpers.AsyncTestCase):
@@ -47,7 +47,9 @@ class TestOperators(tests.helpers.AsyncTestCase):
         def is_negative(x: int) -> bool:
             return x < 0
 
-        filtered = await (from_iterable(items) >= op.filter(is_negative) | op.collect())
+        filtered = await first(
+            from_iterable(items) >= op.filter(is_negative) | op.collect()
+        )
 
         for x in filtered:
             self.assertLess(x, 0)
