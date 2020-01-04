@@ -9,6 +9,6 @@ class AsyncTestCase(aiounittest.AsyncTestCase):
         result = fn()
 
         if asyncio.iscoroutine(result):
-            result = asyncio.run(result)
+            result = asyncio.run(result, debug=True)
 
         return result
