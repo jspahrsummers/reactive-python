@@ -1,6 +1,6 @@
 from typing import AsyncGenerator, Callable, Iterable, List, TypeVar
 
-from reactive.stream import StreamGenerator
+from reactive.stream import GeneratorFinish, StreamGenerator
 
 T = TypeVar("T")
 TIn = TypeVar("TIn", contravariant=True)
@@ -55,8 +55,7 @@ def collect() -> StreamGenerator[List[T], T]:
             while True:
                 x = yield []
                 values.append(x)
-        # TODO: Use a custom exception type? Yielding values after GeneratorExit is disallowed according to the docs
-        except GeneratorExit:
+        except GeneratorFinish:
             yield [values]
             raise
 
