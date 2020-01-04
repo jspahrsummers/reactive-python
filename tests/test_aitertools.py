@@ -4,13 +4,13 @@ from typing import Any, Iterable, List
 from hypothesis import given
 from hypothesis.strategies import from_type, iterables, lists
 
-import reactive
 import tests.helpers
+from reactive import aitertools
 
 
-class TestConstructors(tests.helpers.AsyncTestCase):
+class TestAItertools(tests.helpers.AsyncTestCase):
     async def test_empty(self) -> None:
-        empty = reactive.empty()
+        empty = aitertools.empty()
 
         values: List[None] = []
         async for x in empty:
@@ -19,7 +19,7 @@ class TestConstructors(tests.helpers.AsyncTestCase):
         self.assertEqual(values, [])
 
     async def test_empty_manual_iteration(self) -> None:
-        empty = reactive.empty()
+        empty = aitertools.empty()
 
         ait = empty.__aiter__()
         with self.assertRaises(StopAsyncIteration):
@@ -35,13 +35,13 @@ class TestConstructors(tests.helpers.AsyncTestCase):
             values.append(x)
             return x
 
-        ait = reactive.from_iterable((_save(x) for x in it))
+        ait = aitertools.from_iterable((_save(x) for x in it))
         async for x in ait:
             self.assertEqual(x, values.pop(0))
 
     @given(lists(from_type(type)))  # type: ignore
     async def test_just(self, values: List[Any]) -> None:
-        ait = reactive.just(*values)
+        ait = aitertools.just(*values)
         async for x in ait:
             self.assertEqual(x, values.pop(0))
 

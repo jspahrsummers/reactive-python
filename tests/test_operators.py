@@ -7,6 +7,7 @@ from hypothesis.strategies import integers, iterables, lists
 import reactive
 import tests.helpers
 from reactive import op
+from reactive.aitertools import from_iterable
 
 
 class TestOperators(tests.helpers.AsyncTestCase):
@@ -14,7 +15,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
     async def test_map(self, items: List[int]) -> None:
         # mypy needs help to infer map() here :(
         fn: Callable[[int], int] = lambda x: x * 2
-        ait = reactive.from_iterable(items) >= op.map(fn)
+        ait = from_iterable(items) >= op.map(fn)
 
         i = 0
         async for x in ait:
@@ -25,7 +26,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
     async def test_filter(self, items: Iterable[int]) -> None:
         # mypy needs help to infer filter() here :(
         fn: Callable[[int], bool] = lambda x: x < 0
-        ait = op.filter(fn) <= reactive.from_iterable(items)
+        ait = op.filter(fn) <= from_iterable(items)
 
         async for x in ait:
             self.assertLess(x, 0)
@@ -35,7 +36,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
         def is_negative(x: int) -> bool:
             return x < 0
 
-        ait = reactive.from_iterable(items) >= op.filter(is_negative) | op.map(str)
+        ait = from_iterable(items) >= op.filter(is_negative) | op.map(str)
 
         async for x in ait:
             self.assertIsInstance(x, str)
@@ -47,7 +48,7 @@ class TestOperators(tests.helpers.AsyncTestCase):
             return x < 0
 
         filtered = await (
-            reactive.from_iterable(items) >= op.filter(is_negative) | op.collect()
+            from_iterable(items) >= op.filter(is_negative) | op.collect()
         )
 
         for x in filtered:
