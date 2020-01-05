@@ -47,6 +47,13 @@ def just(*args: T) -> AsyncIterable[T]:
     return from_iterable(args)
 
 
+async def error(err: BaseException) -> AsyncIterable[Any]:
+    """
+    Returns an asynchronous iterable that raises the given exception as soon as iteration begins.
+    """
+    raise err
+
+
 async def first(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
     """
     Returns the first value yielded by the given iterable, then stops iterating. If there are no values yielded, returns the default (if given) or throws an exception.
