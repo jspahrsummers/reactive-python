@@ -39,7 +39,7 @@ async def from_awaitable(a: Awaitable[T]) -> AsyncIterable[T]:
 
 
 async def from_future(
-    fut: Union[asyncio.Future[T], asyncio.Task[T], "concurrent.futures.Future[T]"]
+    fut: Union["asyncio.Future[T]", "asyncio.Task[T]", "concurrent.futures.Future[T]"]
 ) -> AsyncIterable[T]:
     """
     Returns an asynchronous iterable that will yield the result of the given future or task once it is done executing.

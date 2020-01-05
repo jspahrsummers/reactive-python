@@ -32,7 +32,7 @@ class TimeoutGenerator(AsyncGenerator[TOut, TIn], Generic[TOut, TIn]):
     This asynchronous generator wraps another generator to enforce that each successive value is delivered within a specified time window. If the timeout is violated, a reactive.agentools.TimeoutError exception is raised within the inner generator.
     """
 
-    _timer_task: Optional[asyncio.Task[None]] = None
+    _timer_task: Optional["asyncio.Task[None]"] = None
 
     def __init__(self, agen: AsyncGenerator[TOut, TIn], timeout: timedelta):
         self._agen = agen
