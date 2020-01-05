@@ -1,5 +1,8 @@
-from typing import AsyncGenerator, Callable, Iterable, List, Type, TypeVar
+import asyncio
+import itertools
+from typing import AsyncGenerator, Callable, Iterable, List, Tuple, Type, TypeVar
 
+from reactive.agentools import afinish_non_optional
 from reactive.stream import GeneratorFinish, StreamGenerator
 
 T = TypeVar("T")
@@ -155,3 +158,48 @@ def collect() -> StreamGenerator[List[T], T]:
             raise
 
     return StreamGenerator(_collect())
+
+
+def broadcast(*streams: StreamGenerator[TOut, TIn]) -> StreamGenerator[TOut, TIn]:
+    """
+    Distributes each input value to all of the given streams, to process in parallel, then yields an iterable which will provide all of the output values as they return.
+
+    Within the yielded iterable, output values may arrive in a different order than `streams` is specified, as well as an inconsistent order per input value.
+
+    If an exception is raised in the returned generator, it will be raised in turn in each of the streams. Any outputs from those streams will be yielded, after which broadcast() will re-raise the exception.
+    """
+
+    async def _broadcast(
+        streams: Tuple[StreamGenerator[TOut, TIn], ...]
+    ) -> AsyncGenerator[Iterable[TOut], TIn]:
+        result: Iterable[TOut] = []
+
+        while True:
+            try:
+                value = yield result
+                it = asyncio.as_completed((stream.asend(value) for stream in streams))
+                result = itertools.chain.from_iterable((f.result() for f in it))
+            except GeneratorFinish:
+                # TODO: What if a stream wants to yield None here?
+                it = asyncio.as_completed(
+                    (afinish_non_optional(stream) for stream in streams)
+                )
+                yield itertools.chain.from_iterable(
+                    (f.result() for f in it if f.exception() is None)
+                )
+                break
+            except GeneratorExit:
+                await asyncio.gather((stream.aclose() for stream in streams))
+            except BaseException as err:
+                it = asyncio.as_completed(
+                    (
+                        stream.athrow(type(err), err, err.__traceback__)
+                        for stream in streams
+                    )
+                )
+                yield itertools.chain.from_iterable(
+                    (f.result() for f in it if f.exception() is None)
+                )
+                raise
+
+    return StreamGenerator(_broadcast(streams))
