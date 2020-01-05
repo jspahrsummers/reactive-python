@@ -9,7 +9,7 @@ TOut = TypeVar("TOut", covariant=True)
 
 def map(fn: Callable[[TIn], TOut]) -> StreamGenerator[TOut, TIn]:
     """
-    Creates a stream generator which maps over its inputs using the given function.
+    Maps each input to a new value, using the given function.
     
     Each stream yielded will have exactly one item: the mapped value.
     """
@@ -26,9 +26,9 @@ def map(fn: Callable[[TIn], TOut]) -> StreamGenerator[TOut, TIn]:
 
 def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
     """
-    Creates a stream generator which filters its inputs using the given predicate.
+    Passes through only those inputs that satisfy the given predicate.
 
-    Only inputs matching the predicate will be included in the output. Each stream yielded may have zero or one value, depending on whether the predicate passed on the input.
+    Each stream yielded may have zero or one value, depending on whether the predicate passed on the input.
     """
 
     async def _filter(fn: Callable[[T], bool]) -> AsyncGenerator[Iterable[T], T]:
@@ -43,7 +43,7 @@ def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
 
 def take(count: int) -> StreamGenerator[T, T]:
     """
-    Creates a stream generator which passes through the first `count` inputs, then exits.
+    Passes through the first `count` inputs, then exits.
     """
 
     async def _take(count: int) -> AsyncGenerator[Iterable[T], T]:
@@ -56,7 +56,7 @@ def take(count: int) -> StreamGenerator[T, T]:
 
 def drop(count: int) -> StreamGenerator[T, T]:
     """
-    Creates a stream generator which skips the first `count` inputs, then passes through the rest.
+    Skips the first `count` inputs, then passes through the rest.
     """
 
     async def _drop(count: int) -> AsyncGenerator[Iterable[T], T]:
@@ -72,7 +72,7 @@ def drop(count: int) -> StreamGenerator[T, T]:
 
 def collect() -> StreamGenerator[List[T], T]:
     """
-    Creates a stream generator which accumulates all of its inputs into a single list, which is yielded only after the full input is consumed.
+    Accumulates all inputs into a single list, which is yielded only after the full input is consumed.
 
     While the input is still being consumed, each stream yielded will have zero values. Once the input is exhausted, one stream will be yielded containing one list of all the input values received.
     """
