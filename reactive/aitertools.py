@@ -8,6 +8,7 @@ from typing import (
     AsyncIterable,
     AsyncIterator,
     Awaitable,
+    Callable,
     Iterable,
     List,
     NoReturn,
@@ -18,6 +19,8 @@ from typing import (
 
 T = TypeVar("T")
 U = TypeVar("U")
+TIn = TypeVar("TIn", contravariant=True)
+TOut = TypeVar("TOut", covariant=True)
 
 
 async def from_iterable(it: Iterable[T]) -> AsyncIterable[T]:
@@ -133,6 +136,16 @@ async def last(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
         result = default[0]
 
     return result
+
+
+async def map(
+    fn: Callable[[TIn], TOut], ait: AsyncIterable[TIn]
+) -> AsyncIterable[TOut]:
+    """
+    Maps each input to a new value, using the given function.
+    """
+    async for in_value in ait:
+        yield fn(in_value)
 
 
 async def timeout(ait: AsyncIterable[T], td: timedelta) -> AsyncIterable[T]:

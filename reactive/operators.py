@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import itertools
 from datetime import timedelta
 from typing import (
@@ -12,6 +13,7 @@ from typing import (
     TypeVar,
 )
 
+from reactive import aitertools
 from reactive.agentools import afinish_non_optional
 from reactive.stream import GeneratorFinish, StreamGenerator
 
@@ -27,15 +29,7 @@ def map(fn: Callable[[TIn], TOut]) -> StreamGenerator[TOut, TIn]:
     
     Each stream yielded will have exactly one item: the mapped value.
     """
-
-    async def _map(fn: Callable[[TIn], TOut]) -> AsyncGenerator[Iterable[TOut], TIn]:
-        out_value: Iterable[TOut] = []
-
-        while True:
-            in_value = yield out_value
-            out_value = (fn(x) for x in [in_value])
-
-    return StreamGenerator(_map(fn))
+    return lift(functools.partial(aitertools.map, fn))
 
 
 def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
