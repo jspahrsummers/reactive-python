@@ -1,7 +1,16 @@
 import asyncio
 import itertools
 from datetime import timedelta
-from typing import AsyncGenerator, Callable, Iterable, List, Tuple, Type, TypeVar
+from typing import (
+    AsyncGenerator,
+    AsyncIterable,
+    Callable,
+    Iterable,
+    List,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 from reactive.agentools import afinish_non_optional
 from reactive.stream import GeneratorFinish, StreamGenerator
@@ -218,3 +227,86 @@ def broadcast(*streams: StreamGenerator[TOut, TIn]) -> StreamGenerator[TOut, TIn
                 raise
 
     return StreamGenerator(_broadcast(streams))
+
+
+def lift(
+    fn: Callable[[AsyncIterable[TIn]], AsyncIterable[TOut]]
+) -> StreamGenerator[TOut, TIn]:
+    """
+    Lifts a transformation over asynchronous iterables into a stream generator. The stream's input values will be transformed like the asynchronous iterable's would be, then yielded--possibly spread across several iterables in the output.
+    """
+
+    async def _lift(
+        fn: Callable[[AsyncIterable[TIn]], AsyncIterable[TOut]]
+    ) -> AsyncGenerator[Iterable[TOut], TIn]:
+        in_queue: asyncio.Queue[TIn] = asyncio.Queue(maxsize=1)
+        out_queue: asyncio.Queue[TOut] = asyncio.Queue()
+        cancelled = asyncio.Event()
+
+        wait_cancelled = asyncio.create_task(cancelled.wait())
+
+        async def _in_iter() -> AsyncIterable[TIn]:
+            while not cancelled.is_set():
+                try:
+                    value = in_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    get_task = asyncio.create_task(in_queue.get())
+
+                    done, pending = asyncio.wait(
+                        (wait_cancelled, get_task), return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if cancelled.is_set():
+                        return
+
+                    assert get_task in done
+                    value = get_task.result()
+
+                yield value
+                in_queue.task_done()
+
+        async def _out_loop() -> None:
+            async for out in fn(_in_iter()):
+                await out_queue.put(out)
+
+        loop_task = asyncio.create_task(_out_loop())
+
+        try:
+            outputs: List[TOut] = []
+
+            while True:
+                input_value = yield outputs
+                for _ in outputs:
+                    out_queue.task_done()
+
+                if loop_task.done():
+                    # The output iterable finished, so exit gracefully.
+                    break
+
+                try:
+                    in_queue.put_nowait(input_value)
+                except asyncio.QueueFull:
+                    put_task = asyncio.create_task(in_queue.put(input_value))
+                    asyncio.wait(
+                        (loop_task, put_task), return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                # This _does not_ guarantee that out_queue has all of the values that may come from the iterable, but it should at least ensure that any synchronous transformations have completed.
+                # TODO: Test this
+                await in_queue.join()
+
+                outputs = []
+                while not out_queue.empty():
+                    outputs.append(await out_queue.get())
+        except GeneratorFinish:
+            await in_queue.join()
+            cancelled.set()
+
+            loop_task.cancel()
+            await asyncio.wait_for(loop_task, timeout=None)
+
+            yield (out_queue.get_nowait() for _ in range(out_queue.qsize()))
+        finally:
+            cancelled.set()
+            loop_task.cancel()
+
+    return StreamGenerator(_lift(fn))

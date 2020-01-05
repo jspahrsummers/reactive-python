@@ -124,25 +124,3 @@ async def afinish_non_optional(
         raise GeneratorExit from cause
 
     return result
-
-
-async def lift(
-    fn: Callable[[AsyncIterable[TIn]], AsyncIterable[TOut]]
-) -> AsyncGenerator[TOut, TIn]:
-    """
-    Lifts a transformation over asynchronous iterables into a generator. The generator's input values will be transformed like the asynchronous iterable's would be, then yielded.
-    """
-
-    in_queue: asyncio.Queue[TIn] = asyncio.Queue(maxsize=1)
-
-    async def in_iter() -> AsyncIterable[TIn]:
-        while True:
-            yield await in_queue.get()
-
-    out_iter = fn(in_iter())
-    out_gen = out_iter.__aiter__()
-
-    x: TOut = None  # type: ignore
-    while True:
-        await in_queue.put((yield x))
-        x = await out_gen.__anext__()
