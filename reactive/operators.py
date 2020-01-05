@@ -41,6 +41,35 @@ def filter(fn: Callable[[T], bool]) -> StreamGenerator[T, T]:
     return StreamGenerator(_filter(fn))
 
 
+def take(count: int) -> StreamGenerator[T, T]:
+    """
+    Creates a stream generator which passes through the first `count` inputs, then exits.
+    """
+
+    async def _take(count: int) -> AsyncGenerator[Iterable[T], T]:
+        value = yield []
+        for i in range(count):
+            value = yield [value]
+
+    return StreamGenerator(_take(count))
+
+
+def drop(count: int) -> StreamGenerator[T, T]:
+    """
+    Creates a stream generator which skips the first `count` inputs, then passes through the rest.
+    """
+
+    async def _drop(count: int) -> AsyncGenerator[Iterable[T], T]:
+        for i in range(count):
+            _ = yield []
+
+        result: Iterable[T] = []
+        while True:
+            result = [(yield result)]
+
+    return StreamGenerator(_drop(count))
+
+
 def collect() -> StreamGenerator[List[T], T]:
     """
     Creates a stream generator which accumulates all of its inputs into a single list, which is yielded only after the full input is consumed.
