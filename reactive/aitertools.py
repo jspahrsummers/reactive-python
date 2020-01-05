@@ -1,4 +1,6 @@
+import asyncio
 import inspect
+from datetime import datetime, timedelta
 from typing import (
     Any,
     AsyncGenerator,
@@ -52,6 +54,17 @@ async def error(err: BaseException) -> AsyncIterable[Any]:
     Returns an asynchronous iterable that raises the given exception as soon as iteration begins.
     """
     raise err
+
+
+async def interval(td: timedelta) -> AsyncIterable[datetime]:
+    """
+    Returns an asynchronous iterable which yields `datetime.now()`, then sleeps for at least `td`, then yields again, etc., repeatedly without exiting.
+    
+    The interval between yielded datetimes may be greater than `td`, but will never be less.
+    """
+    while True:
+        await asyncio.sleep(td.total_seconds())
+        yield datetime.now()
 
 
 async def first(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
