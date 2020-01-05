@@ -98,6 +98,44 @@ def catch(
     return StreamGenerator(_catch(exc_type, handler))
 
 
+def do(
+    next: Callable[[T], None] = lambda _: None,
+    error: Callable[[BaseException], None] = lambda _: None,
+    completed: Callable[[], None] = lambda: None,
+) -> StreamGenerator[T, T]:
+    """
+    Injects side effects for different stream events, without modifying the stream itself:
+
+    * `next` is invoked whenever a new input arrives at the stream
+    * `error` is invoked whenever an exception is raised in the stream (after which the stream will re-raise it and exit)
+    * `completed` is invoked when the stream is shutting down _other than_ from an exception
+
+    The stream passes through its inputs in the same order they were received.
+    """
+
+    async def _do(
+        next: Callable[[T], None],
+        error: Callable[[BaseException], None],
+        completed: Callable[[], None],
+    ) -> AsyncGenerator[Iterable[T], T]:
+        result: Iterable[T] = []
+
+        while True:
+            try:
+                value = yield result
+            except GeneratorExit:
+                completed()
+                break
+            except BaseException as err:
+                error(err)
+                raise
+            else:
+                next(value)
+                result = [value]
+
+    return StreamGenerator(_do(next, error, completed))
+
+
 def collect() -> StreamGenerator[List[T], T]:
     """
     Accumulates all inputs into a single list, which is yielded only after the full input is consumed.
