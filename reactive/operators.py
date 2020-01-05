@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+from datetime import timedelta
 from typing import AsyncGenerator, Callable, Iterable, List, Tuple, Type, TypeVar
 
 from reactive.agentools import afinish_non_optional
@@ -158,6 +159,20 @@ def collect() -> StreamGenerator[List[T], T]:
             raise
 
     return StreamGenerator(_collect())
+
+
+def delay(td: timedelta) -> StreamGenerator[T, T]:
+    """
+    Delays the delivery of each input value by at least `td`. Does not modify the inputs otherwise.
+    """
+
+    async def _delay(td: timedelta) -> AsyncGenerator[Iterable[T], T]:
+        result: Iterable[T] = []
+        while True:
+            result = [(yield result)]
+            await asyncio.sleep(td.total_seconds())
+
+    return StreamGenerator(_delay(td))
 
 
 def broadcast(*streams: StreamGenerator[TOut, TIn]) -> StreamGenerator[TOut, TIn]:
