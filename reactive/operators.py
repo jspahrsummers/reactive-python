@@ -1,10 +1,11 @@
-from typing import AsyncGenerator, Callable, Iterable, List, TypeVar
+from typing import AsyncGenerator, Callable, Iterable, List, Type, TypeVar
 
 from reactive.stream import GeneratorFinish, StreamGenerator
 
 T = TypeVar("T")
 TIn = TypeVar("TIn", contravariant=True)
 TOut = TypeVar("TOut", covariant=True)
+TException = TypeVar("TException", bound=BaseException)
 
 
 def map(fn: Callable[[TIn], TOut]) -> StreamGenerator[TOut, TIn]:
@@ -68,6 +69,33 @@ def drop(count: int) -> StreamGenerator[T, T]:
             result = [(yield result)]
 
     return StreamGenerator(_drop(count))
+
+
+def catch(
+    exc_type: Type[TException], handler: Callable[[TException], Iterable[T]]
+) -> StreamGenerator[T, T]:
+    """
+    Catches any raised exception that is an instance of the given type (or one of its subclasses), then continues processing inputs.
+    
+    The exception is passed to the given handler, which turns it into a stream of values to be yielded. The stream may yield any number of values.
+    """
+
+    assert not issubclass(exc_type, GeneratorExit)
+
+    async def _catch(
+        exc_type: Type[TException], handler: Callable[[TException], Iterable[T]]
+    ) -> AsyncGenerator[Iterable[T], T]:
+        value: Iterable[T] = []
+
+        while True:
+            try:
+                value = [(yield value)]
+            except GeneratorExit:
+                break
+            except exc_type as err:
+                value = handler(err)
+
+    return StreamGenerator(_catch(exc_type, handler))
 
 
 def collect() -> StreamGenerator[List[T], T]:
