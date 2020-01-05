@@ -9,6 +9,7 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Iterable,
+    List,
     NoReturn,
     TypeVar,
     Union,
@@ -142,3 +143,18 @@ async def timeout(ait: AsyncIterable[T], td: timedelta) -> AsyncIterable[T]:
     agen = ait.__aiter__()
     while True:
         yield await asyncio.wait_for(agen.__anext__(), td.total_seconds())
+
+
+async def cycle(ait: AsyncIterable[T]) -> AsyncIterable[T]:
+    """
+    Infinitely repeats the elements of the source iterable.
+    """
+
+    values: List[T] = []
+    async for x in ait:
+        values.append(x)
+        yield x
+
+    while True:
+        for x in values:
+            yield x
