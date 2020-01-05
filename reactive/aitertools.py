@@ -132,3 +132,13 @@ async def last(ait: AsyncIterable[T], *default: U) -> Union[T, U]:
         result = default[0]
 
     return result
+
+
+async def timeout(ait: AsyncIterable[T], td: timedelta) -> AsyncIterable[T]:
+    """
+    Passes through values from the source iterable, but raises asyncio.TimeoutError if `td` elapses without any further values from the source.
+    """
+
+    agen = ait.__aiter__()
+    while True:
+        yield await asyncio.wait_for(agen.__anext__(), td.total_seconds())
