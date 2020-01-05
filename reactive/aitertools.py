@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import inspect
 from datetime import datetime, timedelta
 from typing import (
@@ -6,6 +7,7 @@ from typing import (
     AsyncGenerator,
     AsyncIterable,
     AsyncIterator,
+    Awaitable,
     Iterable,
     NoReturn,
     TypeVar,
@@ -24,6 +26,33 @@ async def from_iterable(it: Iterable[T]) -> AsyncIterable[T]:
 
     for x in it:
         yield x
+
+
+async def from_awaitable(a: Awaitable[T]) -> AsyncIterable[T]:
+    """
+    Lifts a single awaitable value into an asynchronous iterable.
+
+    If the awaitable is cancellable (for example, an `asyncio.Future` or `asyncio.Task`), note that this function _will not_ take responsibility for cancelling it. See from_future() instead.
+    """
+    yield await a
+
+
+async def from_future(
+    fut: Union[asyncio.Future[T], asyncio.Task[T], "concurrent.futures.Future[T]"]
+) -> AsyncIterable[T]:
+    """
+    Returns an asynchronous iterable that will yield the result of the given future or task once it is done executing.
+
+    This method will take ownership of the future, and cancel its execution if the asynchronous iterable is interrupted. Other kinds of awaitables can be passed in by first wrapping them with asyncio.ensure_future().
+    """
+
+    if isinstance(fut, concurrent.futures.Future):
+        fut = asyncio.wrap_future(fut)
+
+    try:
+        yield await fut
+    finally:
+        fut.cancel()
 
 
 def empty() -> AsyncIterable[None]:
